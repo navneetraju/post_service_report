@@ -2,11 +2,10 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-
 import pandas as pd
 import streamlit as st
 from st_aggrid import AgGrid, GridOptionsBuilder
-
+from io import BytesIO
 from flag_and_update import flag_rows
 from generate_report import generate_report
 
@@ -118,37 +117,28 @@ def main():
         else:
             st.warning(f"No rows flagged for review in {step}.")
 
-        # Ask User for Download Directory
-        download_directory = st.text_input("📁 Enter the directory where the report should be saved:")
-
         # Generate Report Button
         if st.button("📥 Generate Report"):
-            if download_directory.strip():
-                output_path = Path(download_directory)
-                if not output_path.exists():
-                    st.error("❌ The specified directory does not exist. Please enter a valid path.")
-                else:
-                    generate_report(
-                        datasets["EVK"],
-                        datasets["IRC"],
-                        datasets["UV"],
-                        output_path,
-                    )
-                    st.success(f"✅ Report successfully saved in: `{output_path}/Over_Production_Summary.xlsx`")
-            else:
-                st.warning("⚠️ Please enter a valid directory before generating the report.")
+            # Generate the report as a downloadable Excel file
+            report_buffer = BytesIO()
+            generate_report(
+                datasets["EVK"],
+                datasets["IRC"],
+                datasets["UV"],
+                report_buffer,
+            )
+            report_buffer.seek(0)
+
+            st.download_button(
+                label="📥 Download Report",
+                data=report_buffer,
+                file_name="Over_Production_Summary.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+            st.success("✅ Report generated successfully!")
     else:
         st.warning("⚠️ Please upload all three CSV files before proceeding.")
 
 
 if __name__ == "__main__":
-    # Check if running from a PyInstaller package
-    if getattr(sys, 'frozen', False):
-        # Get the path to the current executable
-        executable_path = sys.executable
-        # Run the Streamlit server for this script
-        subprocess.Popen(
-            ["streamlit", "run", executable_path, "--server.port", "8501", "--browser.serverAddress", "localhost"])
-    else:
-        # Run the app normally when executed as a script
-        main()
+    main()
