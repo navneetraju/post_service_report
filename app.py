@@ -1,11 +1,8 @@
 import os
-import subprocess
-import sys
-from pathlib import Path
+import io
 import pandas as pd
 import streamlit as st
 from st_aggrid import AgGrid, GridOptionsBuilder
-from io import BytesIO
 from flag_and_update import flag_rows
 from generate_report import generate_report
 
@@ -119,23 +116,23 @@ def main():
 
         # Generate Report Button
         if st.button("📥 Generate Report"):
-            # Generate the report as a downloadable Excel file
-            report_buffer = BytesIO()
+            # Generate the final report using the fully updated DataFrames
+            buffer = io.BytesIO()  # Create an in-memory bytes buffer
             generate_report(
                 datasets["EVK"],
                 datasets["IRC"],
                 datasets["UV"],
-                report_buffer,
+                buffer  # Pass the buffer instead of a file path
             )
-            report_buffer.seek(0)
+            buffer.seek(0)  # Move to the beginning of the buffer
 
+            # Provide the report as a downloadable link
             st.download_button(
                 label="📥 Download Report",
-                data=report_buffer,
+                data=buffer,
                 file_name="Over_Production_Summary.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
-            st.success("✅ Report generated successfully!")
     else:
         st.warning("⚠️ Please upload all three CSV files before proceeding.")
 
