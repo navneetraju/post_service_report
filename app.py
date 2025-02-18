@@ -117,14 +117,11 @@ def main():
         # Generate Report Button
         if st.button("📥 Generate Report"):
             # Generate the final report using the fully updated DataFrames
-            buffer = io.BytesIO()  # Create an in-memory bytes buffer
-            generate_report(
+            buffer = generate_report(
                 datasets["EVK"],
                 datasets["IRC"],
-                datasets["UV"],
-                buffer  # Pass the buffer instead of a file path
+                datasets["UV"]
             )
-            buffer.seek(0)  # Move to the beginning of the buffer
 
             # Provide the report as a downloadable link
             st.download_button(
