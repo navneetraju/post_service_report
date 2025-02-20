@@ -1,5 +1,4 @@
 from io import BytesIO
-from pathlib import Path
 
 import pandas as pd
 import xlsxwriter
@@ -20,22 +19,22 @@ def create_report_pivot_table(df: pd.DataFrame, label: str):
 
     # Recipe Cost
     recipe_cost_df = df[~df['srvcrsname'].str.startswith("**") & (df['srvcrsname'] != 'Bars')]
-    total_recipe_cost = recipe_cost_df['total_cost'].sum()
+    # total_recipe_cost = recipe_cost_df['total_cost'].sum()
 
-    pivot_df['Percentage'] = round(pivot_df['total_cost'] / total_recipe_cost, 2)
-    pivot_df['Total Recipe Cost'] = round(total_recipe_cost, 2)
+    pivot_df['Percentage'] = round(pivot_df['total_cost'] / pivot_df.loc['Over Production']['total_cost'], 2)
+    # pivot_df['Total Recipe Cost'] = round(total_recipe_cost, 2)
 
-    pivot_df = pivot_df[["Total Recipe Cost", "total_cost", "Percentage"]]
-    pivot_df = pivot_df.rename(columns={"total_cost": ""})
+    pivot_df = pivot_df[["total_cost", "Percentage"]]
+    pivot_df = pivot_df.rename(columns={"total_cost": "Cost"})
     pivot_df.index.name = label
     pivot_df.reset_index(inplace=True)
 
     pivot_df.rename(columns={"index": label}, inplace=True)
     pivot_df[label] = pivot_df[label].replace({"Thrown": "Waste"})
-    desired_order = ["Over Production", "Reused", "Waste", "Donated"]
+    desired_order = ["Reused", "Waste", "Donated", "Over Production"]
     pivot_df = pivot_df.set_index(label).reindex(desired_order).reset_index()
     pivot_df = pivot_df.set_index(label)
-    pivot_df = pivot_df.reindex(["Over Production", "Reused", "Waste", "Donated"])
+    pivot_df = pivot_df.reindex(["Reused", "Waste", "Donated", "Over Production"])
     pivot_df.reset_index(inplace=True)
 
     return pivot_df
@@ -43,10 +42,8 @@ def create_report_pivot_table(df: pd.DataFrame, label: str):
 
 def generate_exec_summary(evk_pivot, irc_pivot, uv_pivot):
     summary = pd.DataFrame()
-    summary["Residential (All Units)"] = evk_pivot.iloc[:, 2] + irc_pivot.iloc[:, 2] + uv_pivot.iloc[:, 2]
-    summary_sum = (evk_pivot.iloc[:, 1] + irc_pivot.iloc[:, 1] + uv_pivot.iloc[:, 1])[0]
-    summary["Percentage"] = round(summary["Residential (All Units)"] / summary_sum, 2)
-    summary.index = ["Over Production", "Reused", "Waste", "Donated"]
+    summary["Residential (All Units)"] = evk_pivot.iloc[:, 1] + irc_pivot.iloc[:, 1] + uv_pivot.iloc[:, 1]
+    summary.index = ["Reused", "Waste", "Donated", "Over Production"]
     summary.reset_index(inplace=True)
     return summary
 
@@ -69,40 +66,33 @@ def generate_report(evk_df: pd.DataFrame, irc_df: pd.DataFrame, uv_df: pd.DataFr
 
     # Write Executive Summary
     worksheet.write(0, 0, "Executive Summary", workbook.add_format({'bold': True, 'font_size': 14}))
-    headers = ["Residential (All Units)", "Total", "Percentage"]
+    headers = ["Residential (All Units)", "Total"]
     worksheet.write_row(1, 0, headers, workbook.add_format(
         {'bold': True, 'bg_color': '#2F75B5', 'font_color': 'white', 'align': 'center'}))
 
     for row_idx, row in enumerate(executive_summary.itertuples(index=False), start=2):
         worksheet.write(row_idx, 0, row[0])  # Label
         worksheet.write(row_idx, 1, row[1], workbook.add_format({'num_format': '"$"#,##0.00'}))  # Total
-        worksheet.write(row_idx, 2, row[2], workbook.add_format({'num_format': '0%'}))  # Percentage
 
     # Create a new summary table for Over Production across all halls (EVK, IRC, UV)
     worksheet.write(7, 0, "Over Production Summary", workbook.add_format({'bold': True, 'font_size': 14}))
-    worksheet.write_row(8, 0, ["Hall", "Total Cost", "Percentage"], workbook.add_format(
+    worksheet.write_row(8, 0, ["Hall", "Total Cost"], workbook.add_format(
         {'bold': True, 'bg_color': '#2F75B5', 'font_color': 'white', 'align': 'center'}))
 
     # Write data for the new summary
     halls = ["EVK", "IRC", "UV"]
     over_production_totals = [
-        evk_pivot.loc[0, ""],
-        irc_pivot.loc[0, ""],
-        uv_pivot.loc[0, ""],
-    ]
-    percentages = [
-        evk_pivot.loc[0, "Percentage"],
-        irc_pivot.loc[0, "Percentage"],
-        uv_pivot.loc[0, "Percentage"],
+        evk_pivot.loc[3, "Cost"],
+        irc_pivot.loc[3, "Cost"],
+        uv_pivot.loc[3, "Cost"],
     ]
 
-    for i, (hall, total, percentage) in enumerate(zip(halls, over_production_totals, percentages), start=9):
+    for i, (hall, total) in enumerate(zip(halls, over_production_totals), start=9):
         worksheet.write(i, 0, hall)
         worksheet.write(i, 1, total, workbook.add_format({'num_format': '"$"#,##0.00'}))  # Total Cost
-        worksheet.write(i, 2, percentage, workbook.add_format({'num_format': '0%'}))  # Percentage
 
     # Add a bar chart for the new summary
-    chart = workbook.add_chart({'type': 'column'})
+    chart = workbook.add_chart({'type': 'pie'})
 
     # Consolidate the data for the chart
     chart.add_series({
@@ -111,20 +101,12 @@ def generate_report(evk_df: pd.DataFrame, irc_df: pd.DataFrame, uv_df: pd.DataFr
         'values': ['Over Production Summary', 9, 1, 11, 1],  # Total Cost values
         'data_labels': {'value': True}
     })
-    chart.add_series({
-        'name': 'Percentage',
-        'categories': ['Over Production Summary', 9, 0, 11, 0],  # Categories (Halls)
-        'values': ['Over Production Summary', 9, 2, 11, 2],  # Percentage values
-        'y2_axis': True,
-        'data_labels': {'value': True}
-    })
 
     # Customize chart axes and title
     chart.set_title({'name': 'Over Production Analysis (EVK, IRC, UV)'})
     chart.set_x_axis({'name': 'Residential Halls'})
     chart.set_y_axis({'name': 'Total Cost'})
-    chart.set_y2_axis({'name': 'Percentage'})
-    chart.set_size({'width': 720, 'height': 480})
+    chart.set_size({'width': 540, 'height': 360})
 
     # Insert the chart into the worksheet
     worksheet.insert_chart('G6', chart)
@@ -136,9 +118,9 @@ def generate_report(evk_df: pd.DataFrame, irc_df: pd.DataFrame, uv_df: pd.DataFr
         worksheet.write_row(start_row, 0, dataframe.columns, workbook.add_format({'bold': True, 'bg_color': '#E6E6E6'}))
         for row_idx, row in enumerate(dataframe.itertuples(index=False), start=start_row + 1):
             for col_idx, value in enumerate(row):
-                if col_idx in [1, 2]:  # Format 'Total Recipe Cost' and 'Cost' columns
+                if col_idx == 1:  # Format 'Total Recipe Cost' and 'Cost' columns
                     worksheet.write(row_idx, col_idx, value, workbook.add_format({'num_format': '"$"#,##0.00'}))
-                elif col_idx == 3:  # Format 'Percentage' column
+                elif col_idx == 2:  # Format 'Percentage' column
                     worksheet.write(row_idx, col_idx, value, workbook.add_format({'num_format': '0%'}))
                 else:
                     worksheet.write(row_idx, col_idx, value)
@@ -192,9 +174,9 @@ def generate_report(evk_df: pd.DataFrame, irc_df: pd.DataFrame, uv_df: pd.DataFr
     # Write data for the new summary
     halls = ["EVK", "IRC", "UV"]
     over_production_totals = [
-        evk_pivot.loc[0, ""],
-        irc_pivot.loc[0, ""],
-        uv_pivot.loc[0, ""],
+        evk_pivot.loc[0, "Cost"],
+        irc_pivot.loc[0, "Cost"],
+        uv_pivot.loc[0, "Cost"],
     ]
     percentages = [
         evk_pivot.loc[0, "Percentage"],
@@ -243,7 +225,7 @@ def generate_report(evk_df: pd.DataFrame, irc_df: pd.DataFrame, uv_df: pd.DataFr
         worksheet.write_row(start_row, 0, dataframe.columns, workbook.add_format({'bold': True, 'bg_color': '#E6E6E6'}))
         for row_idx, row in enumerate(dataframe.itertuples(index=False), start=start_row + 1):
             for col_idx, value in enumerate(row):
-                if col_idx in [1, 2]:  # Format 'Total Recipe Cost' and 'Cost' columns
+                if col_idx == 1:  # Format 'Total Recipe Cost' and 'Cost' columns
                     worksheet.write(row_idx, col_idx, value, workbook.add_format({'num_format': '"$"#,##0.00'}))
                 elif col_idx == 3:  # Format 'Percentage' column
                     worksheet.write(row_idx, col_idx, value, workbook.add_format({'num_format': '0%'}))
