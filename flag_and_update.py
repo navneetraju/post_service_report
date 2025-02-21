@@ -8,4 +8,4 @@ def flag_rows(df: pd.DataFrame):
     return df.loc[cost_outliers.index]
 
 def remove_bars(df: pd.DataFrame):
-    return df[~df['srvcrsname'] != 'Bars']
+    return df[df['srvcrsname'] != 'Bars']
