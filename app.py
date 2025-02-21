@@ -4,8 +4,10 @@ import pandas as pd
 import streamlit as st
 from st_aggrid import AgGrid, GridOptionsBuilder
 
-from flag_and_update import flag_rows
+from flag_and_update import flag_rows, remove_bars
 from generate_report import generate_report
+
+REMOVE_BARS = True
 
 
 def resolve_path(path):
@@ -60,10 +62,12 @@ def main():
     # Ensure all three files are uploaded
     if file_irc and file_uv and file_evk:
         if "datasets" not in st.session_state:
+            irc_df, uv_df, evk_df = pd.read_csv(file_irc, header=0, encoding="cp1252"), pd.read_csv(
+                file_uv, header=0, encoding="cp1252"), pd.read_csv(file_evk, header=0, encoding="cp1252")
             st.session_state.datasets = {
-                "IRC": pd.read_csv(file_irc, header=0, encoding="cp1252"),
-                "UV": pd.read_csv(file_uv, header=0, encoding="cp1252"),
-                "EVK": pd.read_csv(file_evk, header=0, encoding="cp1252"),
+                "IRC": remove_bars(irc_df) if REMOVE_BARS else irc_df,
+                "UV": remove_bars(uv_df) if REMOVE_BARS else uv_df,
+                "EVK": remove_bars(evk_df) if REMOVE_BARS else evk_df
             }
 
         st.success("✅ All three files uploaded successfully!")
@@ -81,6 +85,11 @@ def main():
             format_func=lambda x: f"Review {x} Data",
         )
 
+        # Force refresh of AgGrid on hall selection
+        if "selected_hall" not in st.session_state or st.session_state["selected_hall"] != step:
+            st.session_state["selected_hall"] = step
+            st.experimental_rerun()  # Ensure AgGrid reloads when switching halls
+
         # Show flagged rows for the selected dataset
         flagged_rows = st.session_state.flagged_dfs.get(step, None)
         if flagged_rows is not None and not flagged_rows.empty:
@@ -92,13 +101,18 @@ def main():
             gb.configure_default_column(editable=True, wrapText=True, resizable=True)
             gridOptions = gb.build()
 
+            # Force rerender using session state
+            if f"{step}_grid_updated" not in st.session_state:
+                st.session_state[f"{step}_grid_updated"] = False
+
             grid_response = AgGrid(
                 flagged_rows,
                 gridOptions=gridOptions,
                 editable=True,
                 height=400,
                 theme="streamlit",
-                key=f"{step}_grid",
+                key=f"{step}_grid_{st.session_state[f'{step}_grid_updated']}",
+                reload_data=True,  # Forces refresh on hall switch
             )
 
             # Get updated data from AgGrid
@@ -114,6 +128,7 @@ def main():
 
             if st.button(f"Confirm {step} Updates", key=f"confirm_{step}"):
                 st.session_state.flagged_dfs[step] = updated_flagged_rows
+                st.session_state[f"{step}_grid_updated"] = not st.session_state[f"{step}_grid_updated"]
                 st.success(f"✅ {step} data successfully updated!")
 
         else:
