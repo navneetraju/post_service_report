@@ -1,8 +1,9 @@
 import os
-import io
+
 import pandas as pd
 import streamlit as st
 from st_aggrid import AgGrid, GridOptionsBuilder
+
 from flag_and_update import flag_rows
 from generate_report import generate_report
 
@@ -58,20 +59,19 @@ def main():
 
     # Ensure all three files are uploaded
     if file_irc and file_uv and file_evk:
-        # Load the files into Pandas DataFrames
-        df_irc = pd.read_csv(file_irc, header=0, encoding="cp1252")
-        df_uv = pd.read_csv(file_uv, header=0, encoding="cp1252")
-        df_evk = pd.read_csv(file_evk, header=0, encoding="cp1252")
+        if "datasets" not in st.session_state:
+            st.session_state.datasets = {
+                "IRC": pd.read_csv(file_irc, header=0, encoding="cp1252"),
+                "UV": pd.read_csv(file_uv, header=0, encoding="cp1252"),
+                "EVK": pd.read_csv(file_evk, header=0, encoding="cp1252"),
+            }
 
         st.success("✅ All three files uploaded successfully!")
 
-        # **Flag Rows for Review**
-        datasets = {
-            "IRC": df_irc,
-            "UV": df_uv,
-            "EVK": df_evk,
-        }
-        flagged_dfs = {label: flag_rows(df) for label, df in datasets.items()}
+        if "flagged_dfs" not in st.session_state:
+            st.session_state.flagged_dfs = {
+                label: flag_rows(df) for label, df in st.session_state.datasets.items()
+            }
 
         # Step-by-step navigation for review
         step = st.radio(
@@ -82,7 +82,7 @@ def main():
         )
 
         # Show flagged rows for the selected dataset
-        flagged_rows = flagged_dfs.get(step, None)
+        flagged_rows = st.session_state.flagged_dfs.get(step, None)
         if flagged_rows is not None and not flagged_rows.empty:
             st.subheader(f"📋 Review Flagged Data: {step}")
             st.write(f"Below are the rows flagged for review in {step}:")
@@ -104,13 +104,18 @@ def main():
             # Get updated data from AgGrid
             updated_flagged_rows = pd.DataFrame(grid_response["data"])
 
-            # Merge updated rows back into the original DataFrame
-            original_df = datasets[step].copy()
-            original_df.update(updated_flagged_rows, overwrite=True)  # Update flagged rows
-            datasets[step] = original_df  # Update the dataset
+            # Merge updated rows back into the original DataFrame **Correctly**
+            updated_df = st.session_state.datasets[step].copy()
+            for index, row in updated_flagged_rows.iterrows():
+                updated_df.loc[index, :] = row  # Ensure correct row update
+
+            # Save the fully updated dataset
+            st.session_state.datasets[step] = updated_df
 
             if st.button(f"Confirm {step} Updates", key=f"confirm_{step}"):
+                st.session_state.flagged_dfs[step] = updated_flagged_rows
                 st.success(f"✅ {step} data successfully updated!")
+
         else:
             st.warning(f"No rows flagged for review in {step}.")
 
@@ -118,9 +123,9 @@ def main():
         if st.button("📥 Generate Report"):
             # Generate the final report using the fully updated DataFrames
             buffer = generate_report(
-                datasets["EVK"],
-                datasets["IRC"],
-                datasets["UV"]
+                st.session_state.datasets["EVK"],
+                st.session_state.datasets["IRC"],
+                st.session_state.datasets["UV"]
             )
 
             # Provide the report as a downloadable link
