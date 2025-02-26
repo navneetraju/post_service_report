@@ -23,29 +23,13 @@ def main():
     # Set Streamlit to full-width mode
     st.set_page_config(layout="wide")
 
+    # Initialize session state variables
+    if "grid_update_key" not in st.session_state:
+        st.session_state["grid_update_key"] = 0
+
     # Title and Instructions
     st.title("📊 Residential - Over Production - Monthly Report")
     st.write("Upload CSV files for IRC, UV, and EVK. All three files must be uploaded before proceeding.")
-
-    # Custom CSS for file upload boxes
-    st.markdown("""
-        <style>
-            .big-box {
-                border: 2px dashed #ccc;
-                padding: 30px;
-                text-align: center;
-                font-size: 20px;
-                font-weight: bold;
-                color: #333;
-                margin-bottom: 20px;
-                border-radius: 10px;
-                background-color: #f9f9f9;
-            }
-            .st-emotion-cache-16txtl3 {
-                max-width: 100% !important;
-            }
-        </style>
-    """, unsafe_allow_html=True)
 
     # Upload Boxes for IRC, UV, EVK
     col1, col2, col3 = st.columns(3)
@@ -62,12 +46,15 @@ def main():
     # Ensure all three files are uploaded
     if file_irc and file_uv and file_evk:
         if "datasets" not in st.session_state:
-            irc_df, uv_df, evk_df = pd.read_csv(file_irc, header=0, encoding="cp1252"), pd.read_csv(
-                file_uv, header=0, encoding="cp1252"), pd.read_csv(file_evk, header=0, encoding="cp1252")
+            irc_df, uv_df, evk_df = (
+                pd.read_csv(file_irc, header=0, encoding="cp1252"),
+                pd.read_csv(file_uv, header=0, encoding="cp1252"),
+                pd.read_csv(file_evk, header=0, encoding="cp1252"),
+            )
             st.session_state.datasets = {
                 "IRC": remove_bars(irc_df) if REMOVE_BARS else irc_df,
                 "UV": remove_bars(uv_df) if REMOVE_BARS else uv_df,
-                "EVK": remove_bars(evk_df) if REMOVE_BARS else evk_df
+                "EVK": remove_bars(evk_df) if REMOVE_BARS else evk_df,
             }
 
         st.success("✅ All three files uploaded successfully!")
@@ -85,7 +72,7 @@ def main():
             format_func=lambda x: f"Review {x} Data",
         )
 
-        # Force refresh of AgGrid on hall selection
+        # **Force refresh of AgGrid on hall selection**
         if "selected_hall" not in st.session_state or st.session_state["selected_hall"] != step:
             st.session_state["selected_hall"] = step
             st.experimental_rerun()  # Ensure AgGrid reloads when switching halls
@@ -96,14 +83,10 @@ def main():
             st.subheader(f"📋 Review Flagged Data: {step}")
             st.write(f"Below are the rows flagged for review in {step}:")
 
-            # AgGrid for interactive review and update
+            # **Fix for AgGrid slow rendering**
             gb = GridOptionsBuilder.from_dataframe(flagged_rows)
             gb.configure_default_column(editable=True, wrapText=True, resizable=True)
             gridOptions = gb.build()
-
-            # Force rerender using session state
-            if f"{step}_grid_updated" not in st.session_state:
-                st.session_state[f"{step}_grid_updated"] = False
 
             grid_response = AgGrid(
                 flagged_rows,
@@ -111,30 +94,33 @@ def main():
                 editable=True,
                 height=400,
                 theme="streamlit",
-                key=f"{step}_grid_{st.session_state[f'{step}_grid_updated']}",
-                reload_data=True,  # Forces refresh on hall switch
+                key=f"{step}_grid_{st.session_state['grid_update_key']}",
             )
 
-            # Get updated data from AgGrid
+            # **Fix: Ensure index alignment before updating**
             updated_flagged_rows = pd.DataFrame(grid_response["data"])
 
-            # Merge updated rows back into the original DataFrame **Correctly**
+            # **Fix: Ensure only flagged rows are updated in the original dataset**
             updated_df = st.session_state.datasets[step].copy()
-            for index, row in updated_flagged_rows.iterrows():
-                updated_df.loc[index, :] = row  # Ensure correct row update
 
-            # Save the fully updated dataset
-            st.session_state.datasets[step] = updated_df
+            if not updated_flagged_rows.empty:
+                updated_flagged_rows.set_index(flagged_rows.index, inplace=True)  # Align index
+                updated_df.update(updated_flagged_rows)  # Apply only updated values
 
+            # **Persist updates to session state**
             if st.button(f"Confirm {step} Updates", key=f"confirm_{step}"):
-                st.session_state.flagged_dfs[step] = updated_flagged_rows
-                st.session_state[f"{step}_grid_updated"] = not st.session_state[f"{step}_grid_updated"]
+                st.session_state.datasets[step] = updated_df  # Store updated dataset
+                st.session_state.flagged_dfs[step] = flag_rows(updated_df)  # Re-run flagging after update
+                st.session_state["grid_update_key"] += 1  # Ensure AgGrid reloads correctly
                 st.success(f"✅ {step} data successfully updated!")
+
+                # Debugging: Print updated dataset
+                # print(updated_df[['unitid', 'unitname', 'costprice']])
 
         else:
             st.warning(f"No rows flagged for review in {step}.")
 
-        # Generate Report Button
+        # **Generate Report Button**
         if st.button("📥 Generate Report"):
             # Generate the final report using the fully updated DataFrames
             buffer = generate_report(
