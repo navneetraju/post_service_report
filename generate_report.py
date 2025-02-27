@@ -34,10 +34,10 @@ def create_report_pivot_table(df: pd.DataFrame, label: str):
 
 def generate_exec_summary(evk_pivot, irc_pivot, uv_pivot):
     summary = pd.DataFrame()
-    summary["Residential (All Units)"] = evk_pivot.iloc[:, 1] + irc_pivot.iloc[:, 1] + uv_pivot.iloc[:, 1]
+    summary["Over Production"] = evk_pivot.iloc[:, 1] + irc_pivot.iloc[:, 1] + uv_pivot.iloc[:, 1]
     summary.index = ["Reused", "Waste", "Donated", "Over Production"]
-    summary["Percentage"] = summary["Residential (All Units)"] / summary.loc[
-        "Over Production", "Residential (All Units)"]
+    summary["Percentage"] = summary["Over Production"] / summary.loc[
+        "Over Production", "Over Production"]
     summary.reset_index(inplace=True)
     return summary
 
@@ -75,16 +75,26 @@ def generate_report(evk_df: pd.DataFrame, irc_df: pd.DataFrame, uv_df: pd.DataFr
 
     # **Write Executive Summary**
     worksheet.write(2, 0, "Executive Summary", workbook.add_format({'bold': True, 'font_size': 14}))
-    headers = ["Residential (All Units)", "Total", "Percentage"]
+    headers = ["Over Production", "Total", "Percentage"]
     worksheet.write_row(2, 0, headers, workbook.add_format(
         {'bold': True, 'bg_color': '#2F75B5', 'font_color': 'white', 'align': 'center'}))
 
     for row_idx, row in enumerate(executive_summary.itertuples(index=False), start=3):
-        worksheet.write(row_idx, 0, row[0])  # Label
-        worksheet.write(row_idx, 1, row[1], workbook.add_format({'num_format': '"$"#,##0.00'}))  # Total
-        worksheet.write(row_idx, 2, row[2], workbook.add_format({'num_format': '0%'}))  # Percentage
+        worksheet.write(row_idx, 0, row[0], workbook.add_format({'bg_color': '#DCE6F1'})) if row[
+                                                                                                 0] != "Over Production" else \
+            worksheet.write(row_idx, 0, row[0])  # Hall
+        worksheet.write(row_idx, 1, row[1],
+                        workbook.add_format({'num_format': '"$"#,##0.00', 'bg_color': '#DCE6F1'})) if row[
+                                                                                                          0] != "Over Production" else \
+            worksheet.write(row_idx, 1, row[1],
+                            workbook.add_format({'num_format': '"$"#,##0.00'}))  # Total
+        worksheet.write(row_idx, 2, row[2],
+                        workbook.add_format({'num_format': '0%', 'bg_color': '#DCE6F1'})) if row[
+                                                                                                 0] != "Over Production" else \
+            worksheet.write(row_idx, 2, row[2],
+                            workbook.add_format({'num_format': '0%'}))  # Percentage
 
-    # **Write Over Production Summary**
+    # # **Write Over Production Summary**
     worksheet.write(9, 0, "Over Production Summary", workbook.add_format({'bold': True, 'font_size': 14}))
     worksheet.write_row(10, 0, ["Hall", "Total Cost"], workbook.add_format(
         {'bold': True, 'bg_color': '#2F75B5', 'font_color': 'white', 'align': 'center'}))
@@ -105,37 +115,43 @@ def generate_report(evk_df: pd.DataFrame, irc_df: pd.DataFrame, uv_df: pd.DataFr
     chart = workbook.add_chart({'type': 'pie'})
     chart.add_series({
         'name': 'Total Cost',
-        'categories': ['Over Production Summary', 11, 0, 13, 0],  # Categories (Halls)
-        'values': ['Over Production Summary', 11, 1, 13, 1],  # Total Cost values
+        'categories': ['Over Production Summary', 3, 0, 5, 0],  # Categories (Halls)
+        'values': ['Over Production Summary', 3, 1, 5, 1],  # Total Cost values
         'data_labels': {'value': True}
     })
 
-    chart.set_title({'name': 'Over Production Analysis (EVK, IRC, UV)'})
+    chart.set_title({'name': 'Residential Over Production'})
     chart.set_size({'width': 540, 'height': 360})
 
     # Insert the chart into the worksheet
     worksheet.insert_chart('G6', chart)
 
     # **Write Detailed Data Tables**
-    def write_table(dataframe, label, start_row):
-        worksheet.write(start_row, 0, label, workbook.add_format({'bold': True, 'font_size': 14}))
+    def write_table(dataframe, start_row):
         start_row += 1
         worksheet.write_row(start_row, 0, dataframe.columns, workbook.add_format({'bold': True, 'bg_color': '#E6E6E6'}))
         for row_idx, row in enumerate(dataframe.itertuples(index=False), start=start_row + 1):
+            is_overproduction_row = row[0] == "Over Production"
             for col_idx, value in enumerate(row):
                 if col_idx == 1:  # Format 'Total Recipe Cost' and 'Cost' columns
-                    worksheet.write(row_idx, col_idx, value, workbook.add_format({'num_format': '"$"#,##0.00'}))
+                    worksheet.write(row_idx, col_idx, value, workbook.add_format(
+                        {'num_format': '"$"#,##0.00', 'bg_color': '#DCE6F1'})) if not is_overproduction_row else \
+                        worksheet.write(row_idx, col_idx, value, workbook.add_format({'num_format': '"$"#,##0.00'}))
                 elif col_idx == 2:  # Format 'Percentage' column
-                    worksheet.write(row_idx, col_idx, value, workbook.add_format({'num_format': '0%'}))
+                    worksheet.write(row_idx, col_idx, value, workbook.add_format(
+                        {'num_format': '0%', 'bg_color': '#DCE6F1'})) if not is_overproduction_row else \
+                        worksheet.write(row_idx, col_idx, value, workbook.add_format({'num_format': '0%'}))
                 else:
-                    worksheet.write(row_idx, col_idx, value)
+                    worksheet.write(row_idx, col_idx, value,
+                                    workbook.add_format({'bg_color': '#DCE6F1'})) if not is_overproduction_row else \
+                        worksheet.write(row_idx, col_idx, value)
 
-    current_row = 16
-    write_table(evk_pivot, "EVK", current_row)
+    current_row = 9
+    write_table(evk_pivot, current_row)
     current_row += len(evk_pivot) + 2
-    write_table(irc_pivot, "IRC", current_row)
+    write_table(irc_pivot, current_row)
     current_row += len(irc_pivot) + 2
-    write_table(uv_pivot, "UV", current_row)
+    write_table(uv_pivot, current_row)
 
     # Auto-adjust column widths
     for col_num in range(worksheet.dim_colmax + 1):
