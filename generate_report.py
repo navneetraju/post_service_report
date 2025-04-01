@@ -7,20 +7,19 @@ import xlsxwriter
 def create_report_pivot_table(df: pd.DataFrame, label: str):
     """ Generates the pivot table for Over Production Analysis """
     df.dropna(subset=['srvcrsname'], inplace=True)
-    df['total_cost'] = df['served_prtncount'] * df['costprice']
 
     # Pivot Table for Over Production
     over_production_df = df[df['srvcrsname'].str.startswith("**")]
-    pivot_over_production_df = over_production_df.pivot_table(index='srvcrsname', values='total_cost', aggfunc='sum')
+    pivot_over_production_df = over_production_df.pivot_table(index='srvcrsname', values='Total_Cost', aggfunc='sum')
 
     pivot_over_production_df.loc['Over Production'] = pivot_over_production_df.sum()
     pivot_over_production_df.index = pivot_over_production_df.index.str.replace("**", "")
     pivot_df = pivot_over_production_df.round(2)
 
-    pivot_df['Percentage'] = round(pivot_df['total_cost'] / pivot_df.loc['Over Production']['total_cost'], 2)
+    pivot_df['Percentage'] = round(pivot_df['Total_Cost'] / pivot_df.loc['Over Production']['Total_Cost'], 2)
 
-    pivot_df = pivot_df[["total_cost", "Percentage"]]
-    pivot_df = pivot_df.rename(columns={"total_cost": "Over Production"})
+    pivot_df = pivot_df[["Total_Cost", "Percentage"]]
+    pivot_df = pivot_df.rename(columns={"Total_Cost": "Over Production"})
     pivot_df.index.name = label
     pivot_df.reset_index(inplace=True)
 
