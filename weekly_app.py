@@ -10,7 +10,7 @@ from generate_weekly_report import add_report
 def main():
     st.set_page_config(layout="wide")
 
-    st.title("Resident - Over Production - Weekly Report")
+    st.title("Residential - Over Production - Weekly Report")
     col1, col2, col3 = st.columns(3)
     with col1:
         st.write("Upload IRC Over Production Excel file")
